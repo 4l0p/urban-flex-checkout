@@ -25,18 +25,84 @@ export default function Step3_Payment({
     installments: "1",
   });
 
+  // Estado visual do cartão (Cor e Bandeira)
+  const [cardVisual, setCardVisual] = useState({
+    brand: "CREDIT",
+    color: "linear-gradient(135deg, #27272a 0%, #09090b 100%)", // Cor padrão (Zinc)
+  });
+
   const [errors, setErrors] = useState<any>({});
-  const [touched, setTouched] = useState<any>({}); // Novo estado para controle visual
+  const [touched, setTouched] = useState<any>({});
   const [isFlipped, setIsFlipped] = useState(false);
 
-  // Status do Pagamento: 'idle' | 'processing' | 'success' | 'error'
+  // Status do Pagamento
   const [paymentStatus, setPaymentStatus] = useState<
     "idle" | "processing" | "success" | "error"
   >("idle");
 
+  // --- HELPERS DE CARTÃO (Luhn & Bandeiras) ---
+
+  // 1. Algoritmo de Luhn (Validação Real)
+  const luhnCheck = (val: string) => {
+    const clean = val.replace(/\D/g, "");
+    let checksum = 0;
+    let j = 1;
+    for (let i = clean.length - 1; i >= 0; i--) {
+      let calc = 0;
+      calc = Number(clean.charAt(i)) * j;
+      if (calc > 9) {
+        checksum = checksum + 1;
+        calc = calc - 10;
+      }
+      checksum = checksum + calc;
+      if (j === 1) {
+        j = 2;
+      } else {
+        j = 1;
+      }
+    }
+    return checksum % 10 === 0 && clean.length >= 13;
+  };
+
+  // 2. Detecção de Bandeira e Cor
+  const updateCardVisual = (number: string) => {
+    const clean = number.replace(/\D/g, "");
+
+    // Padrão
+    let brand = "CREDIT";
+    let color = "linear-gradient(135deg, #27272a 0%, #09090b 100%)"; // Cinza/Preto padrão
+
+    if (clean.match(/^4/)) {
+      brand = "VISA";
+      color = "#1434cb";
+    } else if (
+      clean.match(/^5[1-5]/) ||
+      clean.match(/^2(?:2(?:2[1-9]|[3-9]\d)|[3-6]\d\d|7(?:[01]\d|20))/)
+    ) {
+      brand = "MASTERCARD";
+      color = "#ff5f00";
+    } else if (clean.match(/^3[47]/)) {
+      brand = "AMEX";
+      color = "#738077";
+    } else if (
+      clean.match(/^6/) ||
+      clean.match(
+        /^(4011|4389|4514|4576|5041|5066|5090|6277|6362|6363|650|6516|6550)/
+      )
+    ) {
+      brand = "ELO";
+      color = "#003933";
+    } else if (clean.match(/^3(?:0[0-5]|[68])/)) {
+      brand = "DINERS";
+      color = "#004c97";
+    }
+
+    setCardVisual({ brand, color });
+  };
+
   // --- VALIDAÇÕES CENTRALIZADAS ---
   const validators = {
-    number: (value: string) => value.replace(/\s/g, "").length >= 16,
+    number: (value: string) => luhnCheck(value), // Usa Luhn Check agora
     name: (value: string) => value.trim().length >= 3,
     cvv: (value: string) => value.length >= 3,
     expiry: (value: string) => {
@@ -45,13 +111,12 @@ export default function Step3_Payment({
       const year = parseInt("20" + y);
       const month = parseInt(m);
       const today = new Date();
-      // Lógica de data inválida ou vencida
       if (
         isNaN(month) ||
         isNaN(year) ||
         month < 1 ||
         month > 12 ||
-        year < 2025 ||
+        year < 2025 || // Valida ano mínimo
         new Date(year, month - 1) <
           new Date(today.getFullYear(), today.getMonth())
       ) {
@@ -68,7 +133,6 @@ export default function Step3_Payment({
   ) => {
     let value = e.target.value;
 
-    // Máscaras
     if (field === "number") {
       value = value
         .replace(/\D/g, "")
@@ -76,6 +140,9 @@ export default function Step3_Payment({
         .replace(/(\d{4})(\d)/, "$1 $2")
         .replace(/(\d{4})(\d)/, "$1 $2")
         .replace(/(\d{4})\d+?$/, "$1");
+
+      // Atualiza a cor e bandeira ao digitar
+      updateCardVisual(value);
     } else if (field === "expiry") {
       value = value.replace(/\D/g, "");
       if (value.length >= 2) {
@@ -93,7 +160,6 @@ export default function Step3_Payment({
 
     setCardData({ ...cardData, [field]: value });
 
-    // Validação em tempo real se já foi tocado
     if (touched[field]) {
       const isValid = validators[field as keyof typeof validators]
         ? validators[field as keyof typeof validators](value)
@@ -105,20 +171,17 @@ export default function Step3_Payment({
   // --- VALIDAÇÃO NO BLUR ---
   const handleBlur = (field: string) => {
     setTouched((prev: any) => ({ ...prev, [field]: true }));
-
     const isValid = validators[field as keyof typeof validators]
       ? validators[field as keyof typeof validators](
           cardData[field as keyof typeof cardData]
         )
       : true;
-
     setErrors((prev: any) => ({ ...prev, [field]: !isValid }));
   };
 
   // --- SUBMIT ---
   const handlePaymentSubmit = () => {
     if (paymentMethod === "credit") {
-      // 1. Marca todos como tocados para mostrar erros
       setTouched({
         number: true,
         name: true,
@@ -126,7 +189,6 @@ export default function Step3_Payment({
         cvv: true,
       });
 
-      // 2. Valida
       const numberValid = validators.number(cardData.number);
       const nameValid = validators.name(cardData.name);
       const cvvValid = validators.cvv(cardData.cvv);
@@ -144,13 +206,10 @@ export default function Step3_Payment({
       }
     }
 
-    // 2. Inicia Processamento
     setPaymentStatus("processing");
 
-    // 3. Simula API (Delay de 3s)
     setTimeout(() => {
-      const shouldFail = false; // Mude para true para testar erro
-
+      const shouldFail = false;
       if (shouldFail) {
         setPaymentStatus("error");
       } else {
@@ -162,7 +221,7 @@ export default function Step3_Payment({
     }, 3000);
   };
 
-  // Helper para renderizar o Ícone de Check
+  // Helper Check Icon
   const RenderCheckIcon = ({ customClass = "" }) => (
     <div
       className={`absolute top-1/2 -translate-y-1/2 text-green-500 animate-in fade-in zoom-in duration-200 ${
@@ -186,7 +245,7 @@ export default function Step3_Payment({
 
   // --- RENDERIZAÇÃO ---
 
-  // 1. ESTADO INATIVO
+  // 1. INATIVO
   if (currentStep < 3) {
     return (
       <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-5 opacity-50 grayscale select-none pointer-events-none transition-all">
@@ -202,13 +261,12 @@ export default function Step3_Payment({
     );
   }
 
-  // 2. ESTADO ATIVO (COM MODAIS DE OVERLAY)
+  // 2. ATIVO
   return (
     <div className="bg-zinc-900 border border-sky-500 ring-1 ring-sky-500/20 shadow-xl shadow-sky-900/10 rounded-2xl overflow-hidden transition-all duration-300 relative">
-      {/* === OVERLAY GERAL (Fundo Escuro) === */}
+      {/* OVERLAYS (Processing/Success/Error) */}
       {paymentStatus !== "idle" && (
         <div className="absolute inset-0 z-50 bg-zinc-950/95 backdrop-blur-sm flex flex-col items-center justify-center animate-in fade-in duration-300 p-6 text-center">
-          {/* A. PROCESSANDO */}
           {paymentStatus === "processing" && (
             <>
               <div className="w-16 h-16 border-4 border-sky-600 border-t-transparent rounded-full animate-spin mb-6"></div>
@@ -221,7 +279,6 @@ export default function Step3_Payment({
             </>
           )}
 
-          {/* B. SUCESSO */}
           {paymentStatus === "success" && (
             <div className="flex flex-col items-center animate-in zoom-in duration-300">
               <div className="w-20 h-20 rounded-full bg-green-500 flex items-center justify-center mb-4 shadow-[0_0_30px_rgba(34,197,94,0.6)]">
@@ -259,7 +316,6 @@ export default function Step3_Payment({
             </div>
           )}
 
-          {/* C. ERRO */}
           {paymentStatus === "error" && (
             <div className="flex flex-col items-center animate-in zoom-in duration-300">
               <div className="w-20 h-20 rounded-full bg-red-600 flex items-center justify-center mb-6 shadow-[0_0_30px_rgba(220,38,38,0.5)]">
@@ -296,7 +352,7 @@ export default function Step3_Payment({
         </div>
       )}
 
-      {/* HEADER DO CARD */}
+      {/* HEADER */}
       <div className="p-5 border-b border-zinc-800 bg-zinc-900/50 flex items-center gap-3">
         <div className="w-6 h-6 rounded-full bg-zinc-950 border border-zinc-700 text-white flex items-center justify-center text-xs font-bold shadow-inner">
           3
@@ -306,7 +362,6 @@ export default function Step3_Payment({
         </h2>
       </div>
 
-      {/* CONTEÚDO DO FORMULÁRIO */}
       <div className="p-5">
         <p className="text-[11px] text-zinc-500 mb-5">
           Escolha uma forma de pagamento segura.
@@ -336,20 +391,20 @@ export default function Step3_Payment({
           </button>
           <button
             onClick={() => setPaymentMethod("boleto")}
-            className={`py-2.5 text-[10px] font-bold uppercase rounded-md transition-all ${
+            className={`py-2.5 text-[10px] font-bold uppercase rounded-md transition-all flex flex-col items-center justify-center leading-none gap-0.5 ${
               paymentMethod === "boleto"
-                ? "bg-zinc-800 text-white shadow-sm ring-1 ring-white/10"
+                ? "bg-blue-600 text-white shadow-sm ring-1 ring-white/10"
                 : "text-zinc-500 hover:text-zinc-300"
             }`}
           >
-            Boleto
+            Boleto <span className="text-[8px] opacity-80">-5% OFF</span>
           </button>
         </div>
 
         {/* --- CARTÃO DE CRÉDITO --- */}
         {paymentMethod === "credit" && (
           <div className="space-y-6 animate-in fade-in slide-in-from-top-2 duration-300">
-            {/* Cartão 3D */}
+            {/* Cartão 3D Interativo */}
             <div className="w-full h-48 perspective-1000 relative mx-auto max-w-[320px]">
               <div
                 className="w-full h-full relative transition-transform duration-700 preserve-3d"
@@ -358,17 +413,24 @@ export default function Step3_Payment({
                   transform: isFlipped ? "rotateY(180deg)" : "rotateY(0deg)",
                 }}
               >
+                {/* FRENTE DO CARTÃO */}
                 <div
-                  className="absolute w-full h-full rounded-xl bg-gradient-to-br from-zinc-700 via-zinc-800 to-black border border-zinc-600 shadow-2xl p-5 flex flex-col justify-between backface-hidden"
-                  style={{ backfaceVisibility: "hidden" }}
+                  className="absolute w-full h-full rounded-xl border border-white/10 shadow-2xl p-5 flex flex-col justify-between backface-hidden"
+                  style={{
+                    background: cardVisual.color, // Cor Dinâmica
+                    backfaceVisibility: "hidden",
+                    transition: "background 0.5s ease",
+                  }}
                 >
                   <div className="flex justify-between items-start">
-                    <div className="w-10 h-7 bg-yellow-500/80 rounded-md flex items-center justify-center overflow-hidden">
+                    {/* Chip */}
+                    <div className="w-10 h-7 bg-yellow-500/80 rounded-md flex items-center justify-center overflow-hidden border border-yellow-600/50">
                       <div className="w-full h-[1px] bg-black/20 my-[2px]"></div>
                       <div className="w-full h-[1px] bg-black/20 my-[2px]"></div>
                     </div>
-                    <p className="text-white font-bold italic opacity-50 text-xs">
-                      CREDIT
+                    {/* Bandeira Texto/Logo */}
+                    <p className="text-white font-black italic opacity-90 text-sm tracking-wider drop-shadow-md">
+                      {cardVisual.brand}
                     </p>
                   </div>
                   <div>
@@ -377,7 +439,7 @@ export default function Step3_Payment({
                     </p>
                     <div className="flex justify-between items-end">
                       <div className="overflow-hidden">
-                        <p className="text-[8px] text-zinc-400 uppercase">
+                        <p className="text-[8px] text-white/60 uppercase">
                           Nome do Titular
                         </p>
                         <p className="text-white text-xs font-bold uppercase tracking-wider truncate max-w-[180px]">
@@ -385,7 +447,7 @@ export default function Step3_Payment({
                         </p>
                       </div>
                       <div>
-                        <p className="text-[8px] text-zinc-400 uppercase text-right">
+                        <p className="text-[8px] text-white/60 uppercase text-right">
                           Validade
                         </p>
                         <p className="text-white text-xs font-bold font-mono text-right">
@@ -395,11 +457,15 @@ export default function Step3_Payment({
                     </div>
                   </div>
                 </div>
+
+                {/* VERSO DO CARTÃO */}
                 <div
-                  className="absolute w-full h-full rounded-xl bg-gradient-to-bl from-zinc-800 to-zinc-900 border border-zinc-600 shadow-2xl overflow-hidden backface-hidden"
+                  className="absolute w-full h-full rounded-xl bg-zinc-800 border border-zinc-600 shadow-2xl overflow-hidden backface-hidden"
                   style={{
                     backfaceVisibility: "hidden",
                     transform: "rotateY(180deg)",
+                    background:
+                      "linear-gradient(to bottom right, #3f3f46, #27272a)",
                   }}
                 >
                   <div className="w-full h-10 bg-black mt-5 opacity-90"></div>
@@ -462,7 +528,7 @@ export default function Step3_Payment({
                   {touched.number && !errors.number && <RenderCheckIcon />}
                   {touched.number && errors.number && (
                     <p className="absolute -bottom-4 right-0 text-[9px] text-red-500 font-bold uppercase animate-pulse">
-                      Informe o número do cartão
+                      Número inválido
                     </p>
                   )}
                 </div>
@@ -530,7 +596,7 @@ export default function Step3_Payment({
                     {touched.expiry && !errors.expiry && <RenderCheckIcon />}
                     {touched.expiry && errors.expiry && (
                       <p className="absolute -bottom-4 right-0 text-[9px] text-red-500 font-bold uppercase animate-pulse">
-                        informe mês / ano
+                        Data Inválida
                       </p>
                     )}
                   </div>
@@ -564,7 +630,6 @@ export default function Step3_Payment({
                         handleBlur("cvv");
                       }}
                     />
-                    {/* Se estiver válido e tocado, mostra o check. Se não, mostra o ícone de ajuda padrão */}
                     {touched.cvv && !errors.cvv ? (
                       <RenderCheckIcon customClass="right-3.5" />
                     ) : (
@@ -631,7 +696,6 @@ export default function Step3_Payment({
                 </div>
               </div>
 
-              {/* Botão Pagar com ícone de Cadeado */}
               <button
                 onClick={handlePaymentSubmit}
                 className="group relative w-full mt-6 bg-gradient-to-r from-blue-600 to-sky-500 hover:from-sky-500 hover:to-blue-600 text-white font-bold py-4 rounded-lg uppercase tracking-widest shadow-lg shadow-sky-900/20 transform active:scale-[0.98] transition-all flex items-center justify-center"
@@ -659,35 +723,16 @@ export default function Step3_Payment({
         {/* --- PIX --- */}
         {paymentMethod === "pix" && (
           <div className="animate-in fade-in zoom-in duration-300">
-            {/* Box PIX Atualizado */}
             <div className="bg-zinc-950 border border-zinc-800 rounded-xl p-6 mb-6">
-              {/* Header com Logo e Badge */}
               <div className="flex items-center justify-between mb-6">
                 <div className="text-white font-bold text-lg flex items-center gap-2">
-                  {/* <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    width="24"
-                    height="24"
-                    viewBox="0 0 24 24"
-                    fill="currentColor"
-                    className="text-green-500"
-                  >
-                    <path d="M12 2L2 19h20L12 2zm0 3.8l6.8 11.2H5.2L12 5.8z" />
-                    <circle cx="12" cy="13" r="2" />
-                  </svg>
-                  PIX */}
-                  <img
-                    className="h-auto w-22"
-                    src="/pix.png"
-                    alt="Processado por Pix Banco Central"
-                  />
+                  <img className="h-auto w-22" src="/pix.png" alt="Pix" />
                 </div>
                 <div className="bg-green-500 text-black text-[10px] font-bold px-2 py-1 rounded">
                   Aprovação Imediata + 5% OFF
                 </div>
               </div>
 
-              {/* Lista de Benefícios */}
               <ul className="space-y-3 text-zinc-400 text-xs list-disc pl-4 leading-tight">
                 <li>30 minutos para pagar</li>
                 <li>Pagamento à vista</li>
@@ -696,7 +741,6 @@ export default function Step3_Payment({
               </ul>
             </div>
 
-            {/* Botão PIX - Azul com Cadeado */}
             <button
               onClick={handlePaymentSubmit}
               className="group relative w-full bg-gradient-to-r from-blue-600 to-sky-500 hover:from-sky-500 hover:to-blue-600 text-white font-bold py-4 rounded-lg uppercase tracking-widest shadow-lg shadow-sky-900/20 transform active:scale-[0.98] transition-all flex items-center justify-center mt-6"
@@ -724,6 +768,7 @@ export default function Step3_Payment({
         {paymentMethod === "boleto" && (
           <div className="animate-in fade-in zoom-in duration-300">
             <div className="bg-zinc-950 border border-zinc-800 rounded-xl p-8 text-center mb-6">
+              {/* Ícone Central - Código de Barras */}
               <div className="w-12 h-12 bg-zinc-900 rounded-full flex items-center justify-center mx-auto mb-3 border border-zinc-800">
                 <svg
                   xmlns="http://www.w3.org/2000/svg"
@@ -736,7 +781,12 @@ export default function Step3_Payment({
                   <path
                     strokeLinecap="round"
                     strokeLinejoin="round"
-                    d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z"
+                    d="M3.75 4.875c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5A1.125 1.125 0 013.75 9.375v-4.5zM3.75 14.625c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5a1.125 1.125 0 01-1.125-1.125v-4.5zM13.5 4.875c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5A1.125 1.125 0 0113.5 9.375v-4.5z"
+                  />
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M6.75 6.75h.75v.75h-.75v-.75zM6.75 16.5h.75v.75h-.75v-.75zM16.5 6.75h.75v.75h-.75v-.75zM13.5 13.5h.75v.75h-.75v-.75zM13.5 19.5h.75v.75h-.75v-.75zM19.5 13.5h.75v.75h-.75v-.75zM19.5 19.5h.75v.75h-.75v-.75zM16.5 16.5h.75v.75h-.75v-.75z"
                   />
                 </svg>
               </div>
@@ -750,22 +800,23 @@ export default function Step3_Payment({
 
             <button
               onClick={handlePaymentSubmit}
-              className="group relative w-full bg-zinc-800 hover:bg-zinc-700 text-white font-bold py-4 rounded-lg uppercase tracking-widest shadow-lg shadow-black/20 transform active:scale-[0.98] transition-all flex items-center justify-center border border-zinc-700"
+              className="group relative w-full bg-gradient-to-r from-blue-600 to-sky-500 hover:from-sky-500 hover:to-blue-600 text-white font-bold py-4 rounded-lg uppercase tracking-widest shadow-lg shadow-sky-900/20 transform active:scale-[0.98] transition-all flex items-center justify-center border border-zinc-700"
             >
-              <span className="text-sm">GERAR BOLETO</span>
+              <span className="text-sm">PAGAR COM BOLETO</span>
               <div className="absolute right-6 flex items-center group-hover:translate-x-1 transition-transform">
+                {/* Ícone de Cadeado */}
                 <svg
                   xmlns="http://www.w3.org/2000/svg"
                   fill="none"
                   viewBox="0 0 24 24"
-                  strokeWidth={3}
+                  strokeWidth={2}
                   stroke="currentColor"
                   className="w-5 h-5"
                 >
                   <path
                     strokeLinecap="round"
                     strokeLinejoin="round"
-                    d="M13.5 4.5L21 12m0 0l-7.5 7.5M21 12H3"
+                    d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z"
                   />
                 </svg>
               </div>
