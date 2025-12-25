@@ -1,21 +1,21 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
+// Removemos o useRouter daqui, pois quem navega agora é o pai
 
 interface Step3Props {
   currentStep: number;
   paymentMethod: "credit" | "pix" | "boleto";
   setPaymentMethod: (method: "credit" | "pix" | "boleto") => void;
+  onFinish: () => void; // <--- NOVA PROP QUE VEM DO PAI
 }
 
 export default function Step3_Payment({
   currentStep,
   paymentMethod,
   setPaymentMethod,
+  onFinish, // Recebendo a função
 }: Step3Props) {
-  const router = useRouter();
-
   // --- ESTADOS ---
   const [cardData, setCardData] = useState({
     number: "",
@@ -25,24 +25,19 @@ export default function Step3_Payment({
     installments: "1",
   });
 
-  // Estado visual do cartão (Cor e Bandeira)
   const [cardVisual, setCardVisual] = useState({
     brand: "CREDIT",
-    color: "linear-gradient(135deg, #27272a 0%, #09090b 100%)", // Cor padrão (Zinc)
+    color: "linear-gradient(135deg, #27272a 0%, #09090b 100%)",
   });
 
   const [errors, setErrors] = useState<any>({});
   const [touched, setTouched] = useState<any>({});
   const [isFlipped, setIsFlipped] = useState(false);
-
-  // Status do Pagamento
   const [paymentStatus, setPaymentStatus] = useState<
     "idle" | "processing" | "success" | "error"
   >("idle");
 
-  // --- HELPERS DE CARTÃO (Luhn & Bandeiras) ---
-
-  // 1. Algoritmo de Luhn (Validação Real)
+  // --- HELPERS (Luhn Check) ---
   const luhnCheck = (val: string) => {
     const clean = val.replace(/\D/g, "");
     let checksum = 0;
@@ -55,22 +50,17 @@ export default function Step3_Payment({
         calc = calc - 10;
       }
       checksum = checksum + calc;
-      if (j === 1) {
-        j = 2;
-      } else {
-        j = 1;
-      }
+      if (j === 1) j = 2;
+      else j = 1;
     }
     return checksum % 10 === 0 && clean.length >= 13;
   };
 
-  // 2. Detecção de Bandeira e Cor
+  // --- DETECÇÃO BANDEIRA ---
   const updateCardVisual = (number: string) => {
     const clean = number.replace(/\D/g, "");
-
-    // Padrão
     let brand = "CREDIT";
-    let color = "linear-gradient(135deg, #27272a 0%, #09090b 100%)"; // Cinza/Preto padrão
+    let color = "linear-gradient(135deg, #27272a 0%, #09090b 100%)";
 
     if (clean.match(/^4/)) {
       brand = "VISA";
@@ -100,9 +90,9 @@ export default function Step3_Payment({
     setCardVisual({ brand, color });
   };
 
-  // --- VALIDAÇÕES CENTRALIZADAS ---
+  // --- VALIDAÇÕES ---
   const validators = {
-    number: (value: string) => luhnCheck(value), // Usa Luhn Check agora
+    number: (value: string) => luhnCheck(value),
     name: (value: string) => value.trim().length >= 3,
     cvv: (value: string) => value.length >= 3,
     expiry: (value: string) => {
@@ -116,23 +106,21 @@ export default function Step3_Payment({
         isNaN(year) ||
         month < 1 ||
         month > 12 ||
-        year < 2025 || // Valida ano mínimo
+        year < 2025 ||
         new Date(year, month - 1) <
           new Date(today.getFullYear(), today.getMonth())
-      ) {
+      )
         return false;
-      }
       return true;
     },
   };
 
-  // --- MÁSCARAS & CHANGE ---
+  // --- HANDLERS ---
   const handleCardMask = (
     e: React.ChangeEvent<HTMLInputElement>,
     field: string
   ) => {
     let value = e.target.value;
-
     if (field === "number") {
       value = value
         .replace(/\D/g, "")
@@ -140,8 +128,6 @@ export default function Step3_Payment({
         .replace(/(\d{4})(\d)/, "$1 $2")
         .replace(/(\d{4})(\d)/, "$1 $2")
         .replace(/(\d{4})\d+?$/, "$1");
-
-      // Atualiza a cor e bandeira ao digitar
       updateCardVisual(value);
     } else if (field === "expiry") {
       value = value.replace(/\D/g, "");
@@ -152,14 +138,10 @@ export default function Step3_Payment({
       value = value
         .replace(/(\d{2})(\d)/, "$1/$2")
         .replace(/(\/\d{2})\d+?$/, "$1");
-    } else if (field === "cvv") {
-      value = value.replace(/\D/g, "");
-    } else if (field === "name") {
-      value = value.toUpperCase();
-    }
+    } else if (field === "cvv") value = value.replace(/\D/g, "");
+    else if (field === "name") value = value.toUpperCase();
 
     setCardData({ ...cardData, [field]: value });
-
     if (touched[field]) {
       const isValid = validators[field as keyof typeof validators]
         ? validators[field as keyof typeof validators](value)
@@ -168,7 +150,6 @@ export default function Step3_Payment({
     }
   };
 
-  // --- VALIDAÇÃO NO BLUR ---
   const handleBlur = (field: string) => {
     setTouched((prev: any) => ({ ...prev, [field]: true }));
     const isValid = validators[field as keyof typeof validators]
@@ -179,49 +160,33 @@ export default function Step3_Payment({
     setErrors((prev: any) => ({ ...prev, [field]: !isValid }));
   };
 
-  // --- SUBMIT ---
   const handlePaymentSubmit = () => {
     if (paymentMethod === "credit") {
-      setTouched({
-        number: true,
-        name: true,
-        expiry: true,
-        cvv: true,
-      });
-
+      setTouched({ number: true, name: true, expiry: true, cvv: true });
       const numberValid = validators.number(cardData.number);
       const nameValid = validators.name(cardData.name);
       const cvvValid = validators.cvv(cardData.cvv);
       const expiryValid = validators.expiry(cardData.expiry);
-
       setErrors({
         number: !numberValid,
         name: !nameValid,
         expiry: !expiryValid,
         cvv: !cvvValid,
       });
-
-      if (!numberValid || !nameValid || !expiryValid || !cvvValid) {
-        return;
-      }
+      if (!numberValid || !nameValid || !expiryValid || !cvvValid) return;
     }
 
     setPaymentStatus("processing");
 
     setTimeout(() => {
-      const shouldFail = false;
-      if (shouldFail) {
-        setPaymentStatus("error");
-      } else {
-        setPaymentStatus("success");
-        setTimeout(() => {
-          router.push("/checkout/thank-you");
-        }, 2500);
-      }
+      setPaymentStatus("success");
+      setTimeout(() => {
+        // AQUI ESTÁ A MÁGICA: Chamamos a função do pai para salvar os dados
+        onFinish();
+      }, 2500);
     }, 3000);
   };
 
-  // Helper Check Icon
   const RenderCheckIcon = ({ customClass = "" }) => (
     <div
       className={`absolute top-1/2 -translate-y-1/2 text-green-500 animate-in fade-in zoom-in duration-200 ${
@@ -244,8 +209,6 @@ export default function Step3_Payment({
   );
 
   // --- RENDERIZAÇÃO ---
-
-  // 1. INATIVO
   if (currentStep < 3) {
     return (
       <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-5 opacity-50 grayscale select-none pointer-events-none transition-all">
@@ -261,10 +224,9 @@ export default function Step3_Payment({
     );
   }
 
-  // 2. ATIVO
   return (
     <div className="bg-zinc-900 border border-sky-500 ring-1 ring-sky-500/20 shadow-xl shadow-sky-900/10 rounded-2xl overflow-hidden transition-all duration-300 relative">
-      {/* OVERLAYS (Processing/Success/Error) */}
+      {/* OVERLAYS */}
       {paymentStatus !== "idle" && (
         <div className="absolute inset-0 z-50 bg-zinc-950/95 backdrop-blur-sm flex flex-col items-center justify-center animate-in fade-in duration-300 p-6 text-center">
           {paymentStatus === "processing" && (
@@ -278,7 +240,6 @@ export default function Step3_Payment({
               </p>
             </>
           )}
-
           {paymentStatus === "success" && (
             <div className="flex flex-col items-center animate-in zoom-in duration-300">
               <div className="w-20 h-20 rounded-full bg-green-500 flex items-center justify-center mb-4 shadow-[0_0_30px_rgba(34,197,94,0.6)]">
@@ -313,40 +274,6 @@ export default function Step3_Payment({
                   }
                 }
               `}</style>
-            </div>
-          )}
-
-          {paymentStatus === "error" && (
-            <div className="flex flex-col items-center animate-in zoom-in duration-300">
-              <div className="w-20 h-20 rounded-full bg-red-600 flex items-center justify-center mb-6 shadow-[0_0_30px_rgba(220,38,38,0.5)]">
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  strokeWidth={4}
-                  stroke="white"
-                  className="w-10 h-10"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    d="M6 18L18 6M6 6l12 12"
-                  />
-                </svg>
-              </div>
-              <p className="text-red-500 font-black text-lg tracking-wide mb-2 uppercase">
-                Pagamento Recusado
-              </p>
-              <p className="text-zinc-400 text-xs max-w-[250px] mb-6 leading-relaxed">
-                A operadora do cartão não autorizou a transação. Verifique os
-                dados ou tente outro cartão.
-              </p>
-              <button
-                onClick={() => setPaymentStatus("idle")}
-                className="px-6 py-3 bg-zinc-800 hover:bg-zinc-700 text-white font-bold rounded-lg text-xs uppercase tracking-wide transition-colors border border-zinc-700"
-              >
-                Tentar Novamente
-              </button>
             </div>
           )}
         </div>
@@ -401,10 +328,9 @@ export default function Step3_Payment({
           </button>
         </div>
 
-        {/* --- CARTÃO DE CRÉDITO --- */}
+        {/* CARTÃO */}
         {paymentMethod === "credit" && (
           <div className="space-y-6 animate-in fade-in slide-in-from-top-2 duration-300">
-            {/* Cartão 3D Interativo */}
             <div className="w-full h-48 perspective-1000 relative mx-auto max-w-[320px]">
               <div
                 className="w-full h-full relative transition-transform duration-700 preserve-3d"
@@ -413,22 +339,19 @@ export default function Step3_Payment({
                   transform: isFlipped ? "rotateY(180deg)" : "rotateY(0deg)",
                 }}
               >
-                {/* FRENTE DO CARTÃO */}
                 <div
                   className="absolute w-full h-full rounded-xl border border-white/10 shadow-2xl p-5 flex flex-col justify-between backface-hidden"
                   style={{
-                    background: cardVisual.color, // Cor Dinâmica
+                    background: cardVisual.color,
                     backfaceVisibility: "hidden",
                     transition: "background 0.5s ease",
                   }}
                 >
                   <div className="flex justify-between items-start">
-                    {/* Chip */}
                     <div className="w-10 h-7 bg-yellow-500/80 rounded-md flex items-center justify-center overflow-hidden border border-yellow-600/50">
                       <div className="w-full h-[1px] bg-black/20 my-[2px]"></div>
                       <div className="w-full h-[1px] bg-black/20 my-[2px]"></div>
                     </div>
-                    {/* Bandeira Texto/Logo */}
                     <p className="text-white font-black italic opacity-90 text-sm tracking-wider drop-shadow-md">
                       {cardVisual.brand}
                     </p>
@@ -457,8 +380,6 @@ export default function Step3_Payment({
                     </div>
                   </div>
                 </div>
-
-                {/* VERSO DO CARTÃO */}
                 <div
                   className="absolute w-full h-full rounded-xl bg-zinc-800 border border-zinc-600 shadow-2xl overflow-hidden backface-hidden"
                   style={{
@@ -483,7 +404,6 @@ export default function Step3_Payment({
               </div>
             </div>
 
-            {/* Inputs */}
             <div className="space-y-4">
               <div className="space-y-1">
                 <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider pl-1">
@@ -494,18 +414,15 @@ export default function Step3_Payment({
                     type="text"
                     placeholder="0000 0000 0000 0000"
                     maxLength={19}
-                    className={`w-full h-12 bg-zinc-950 border rounded-lg px-4 pl-11 text-sm text-white outline-none transition-all placeholder-zinc-700 
-                      ${
-                        touched.number && !errors.number
-                          ? "border-green-500 focus:border-green-500"
-                          : ""
-                      }
-                      ${
-                        touched.number && errors.number
-                          ? "border-red-500 focus:border-red-500"
-                          : "border-zinc-800 focus:border-sky-500"
-                      }
-                    `}
+                    className={`w-full h-12 bg-zinc-950 border rounded-lg px-4 pl-11 text-sm text-white outline-none transition-all placeholder-zinc-700 ${
+                      touched.number && !errors.number
+                        ? "border-green-500 focus:border-green-500"
+                        : ""
+                    } ${
+                      touched.number && errors.number
+                        ? "border-red-500 focus:border-red-500"
+                        : "border-zinc-800 focus:border-sky-500"
+                    }`}
                     value={cardData.number}
                     onChange={(e) => handleCardMask(e, "number")}
                     onFocus={() => setIsFlipped(false)}
@@ -541,18 +458,15 @@ export default function Step3_Payment({
                   <input
                     type="text"
                     placeholder="COMO NO CARTÃO"
-                    className={`w-full h-12 bg-zinc-950 border rounded-lg px-4 text-sm text-white outline-none uppercase transition-all placeholder-zinc-700 
-                      ${
-                        touched.name && !errors.name
-                          ? "border-green-500 focus:border-green-500"
-                          : ""
-                      }
-                      ${
-                        touched.name && errors.name
-                          ? "border-red-500 focus:border-red-500"
-                          : "border-zinc-800 focus:border-sky-500"
-                      }
-                    `}
+                    className={`w-full h-12 bg-zinc-950 border rounded-lg px-4 text-sm text-white outline-none uppercase transition-all placeholder-zinc-700 ${
+                      touched.name && !errors.name
+                        ? "border-green-500 focus:border-green-500"
+                        : ""
+                    } ${
+                      touched.name && errors.name
+                        ? "border-red-500 focus:border-red-500"
+                        : "border-zinc-800 focus:border-sky-500"
+                    }`}
                     value={cardData.name}
                     onChange={(e) => handleCardMask(e, "name")}
                     onFocus={() => setIsFlipped(false)}
@@ -576,18 +490,15 @@ export default function Step3_Payment({
                       type="text"
                       placeholder="MM/AA"
                       maxLength={5}
-                      className={`w-full h-12 bg-zinc-950 border rounded-lg px-4 text-sm text-white outline-none text-center transition-all placeholder-zinc-700 
-                        ${
-                          touched.expiry && !errors.expiry
-                            ? "border-green-500 focus:border-green-500"
-                            : ""
-                        }
-                        ${
-                          touched.expiry && errors.expiry
-                            ? "border-red-500 focus:border-red-500"
-                            : "border-zinc-800 focus:border-sky-500"
-                        }
-                      `}
+                      className={`w-full h-12 bg-zinc-950 border rounded-lg px-4 text-sm text-white outline-none text-center transition-all placeholder-zinc-700 ${
+                        touched.expiry && !errors.expiry
+                          ? "border-green-500 focus:border-green-500"
+                          : ""
+                      } ${
+                        touched.expiry && errors.expiry
+                          ? "border-red-500 focus:border-red-500"
+                          : "border-zinc-800 focus:border-sky-500"
+                      }`}
                       value={cardData.expiry}
                       onChange={(e) => handleCardMask(e, "expiry")}
                       onFocus={() => setIsFlipped(false)}
@@ -610,18 +521,15 @@ export default function Step3_Payment({
                       type="text"
                       placeholder="123"
                       maxLength={4}
-                      className={`w-full h-12 bg-zinc-950 border rounded-lg px-4 text-sm text-white outline-none text-center transition-all placeholder-zinc-700 
-                        ${
-                          touched.cvv && !errors.cvv
-                            ? "border-green-500 focus:border-green-500"
-                            : ""
-                        }
-                        ${
-                          touched.cvv && errors.cvv
-                            ? "border-red-500 focus:border-red-500"
-                            : "border-zinc-800 focus:border-sky-500"
-                        }
-                      `}
+                      className={`w-full h-12 bg-zinc-950 border rounded-lg px-4 text-sm text-white outline-none text-center transition-all placeholder-zinc-700 ${
+                        touched.cvv && !errors.cvv
+                          ? "border-green-500 focus:border-green-500"
+                          : ""
+                      } ${
+                        touched.cvv && errors.cvv
+                          ? "border-red-500 focus:border-red-500"
+                          : "border-zinc-800 focus:border-sky-500"
+                      }`}
                       value={cardData.cvv}
                       onChange={(e) => handleCardMask(e, "cvv")}
                       onFocus={() => setIsFlipped(true)}
@@ -665,10 +573,7 @@ export default function Step3_Payment({
                     className="w-full h-12 bg-zinc-950 border border-zinc-800 rounded-lg px-4 text-sm text-white focus:border-sky-500 outline-none appearance-none transition-all cursor-pointer"
                     value={cardData.installments}
                     onChange={(e) =>
-                      setCardData({
-                        ...cardData,
-                        installments: e.target.value,
-                      })
+                      setCardData({ ...cardData, installments: e.target.value })
                     }
                     onFocus={() => setIsFlipped(false)}
                   >
@@ -695,7 +600,6 @@ export default function Step3_Payment({
                   </div>
                 </div>
               </div>
-
               <button
                 onClick={handlePaymentSubmit}
                 className="group relative w-full mt-6 bg-gradient-to-r from-blue-600 to-sky-500 hover:from-sky-500 hover:to-blue-600 text-white font-bold py-4 rounded-lg uppercase tracking-widest shadow-lg shadow-sky-900/20 transform active:scale-[0.98] transition-all flex items-center justify-center"
@@ -720,7 +624,7 @@ export default function Step3_Payment({
           </div>
         )}
 
-        {/* --- PIX --- */}
+        {/* PIX */}
         {paymentMethod === "pix" && (
           <div className="animate-in fade-in zoom-in duration-300">
             <div className="bg-zinc-950 border border-zinc-800 rounded-xl p-6 mb-6">
@@ -732,7 +636,6 @@ export default function Step3_Payment({
                   Aprovação Imediata + 5% OFF
                 </div>
               </div>
-
               <ul className="space-y-3 text-zinc-400 text-xs list-disc pl-4 leading-tight">
                 <li>30 minutos para pagar</li>
                 <li>Pagamento à vista</li>
@@ -740,7 +643,6 @@ export default function Step3_Payment({
                 <li>Seu pedido chegará mais rápido</li>
               </ul>
             </div>
-
             <button
               onClick={handlePaymentSubmit}
               className="group relative w-full bg-gradient-to-r from-blue-600 to-sky-500 hover:from-sky-500 hover:to-blue-600 text-white font-bold py-4 rounded-lg uppercase tracking-widest shadow-lg shadow-sky-900/20 transform active:scale-[0.98] transition-all flex items-center justify-center mt-6"
@@ -764,11 +666,10 @@ export default function Step3_Payment({
           </div>
         )}
 
-        {/* --- BOLETO --- */}
+        {/* BOLETO */}
         {paymentMethod === "boleto" && (
           <div className="animate-in fade-in zoom-in duration-300">
             <div className="bg-zinc-950 border border-zinc-800 rounded-xl p-8 text-center mb-6">
-              {/* Ícone Central - Código de Barras */}
               <div className="w-12 h-12 bg-zinc-900 rounded-full flex items-center justify-center mx-auto mb-3 border border-zinc-800">
                 <svg
                   xmlns="http://www.w3.org/2000/svg"
@@ -797,14 +698,12 @@ export default function Step3_Payment({
                 Pode levar até 48h para compensar.
               </p>
             </div>
-
             <button
               onClick={handlePaymentSubmit}
               className="group relative w-full bg-gradient-to-r from-blue-600 to-sky-500 hover:from-sky-500 hover:to-blue-600 text-white font-bold py-4 rounded-lg uppercase tracking-widest shadow-lg shadow-sky-900/20 transform active:scale-[0.98] transition-all flex items-center justify-center border border-zinc-700"
             >
               <span className="text-sm">PAGAR COM BOLETO</span>
               <div className="absolute right-6 flex items-center group-hover:translate-x-1 transition-transform">
-                {/* Ícone de Cadeado */}
                 <svg
                   xmlns="http://www.w3.org/2000/svg"
                   fill="none"

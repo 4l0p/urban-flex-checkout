@@ -2,13 +2,14 @@
 
 import { useState, useEffect, Suspense } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 
 import Step1_Identification from "./_components/Step1_Identification";
 import Step2_Delivery from "./_components/Step2_Delivery";
 import Step3_Payment from "./_components/Step3_Payment";
 import OrderSummary from "./_components/OrderSummary";
 
-// --- NOVO: Componente de Prova Social com 3 Avaliações ---
+// --- Componente de Prova Social ---
 const reviews = [
   {
     initials: "LS",
@@ -74,8 +75,11 @@ const SocialProof = () => (
     ))}
   </div>
 );
+
 function CheckoutContent() {
+  const router = useRouter();
   const [currentStep, setCurrentStep] = useState(1);
+
   const [selectedSize, setSelectedSize] = useState("M");
   const [productPrice, setProductPrice] = useState(99.9);
   const [shippingMethod, setShippingMethod] = useState<"free" | "express">(
@@ -99,6 +103,7 @@ function CheckoutContent() {
   const [paymentMethod, setPaymentMethod] = useState<
     "credit" | "pix" | "boleto"
   >("credit");
+
   const [timeLeft, setTimeLeft] = useState({ minutes: 10, seconds: 0 });
 
   useEffect(() => {
@@ -109,7 +114,7 @@ function CheckoutContent() {
           const data = JSON.parse(storedData);
           if (data.size) setSelectedSize(data.size);
           if (data.price) setProductPrice(Number(data.price));
-          if (data.shipping) setShippingMethod(data.shipping);
+          if (data.shipping) setShippingMethod(data.shipping); // Lê 'shipping' se vier da Home
         } catch (error) {
           console.error(error);
         }
@@ -136,9 +141,23 @@ function CheckoutContent() {
   };
   const nextStep = () => setCurrentStep((prev) => prev + 1);
 
+  // --- CORREÇÃO AQUI ---
+  const handleFinishCheckout = () => {
+    const finalOrderData = {
+      customer,
+      address,
+      paymentMethod,
+      shipping: shippingMethod, // <--- Renomeado para 'shipping' para casar com a ThankYou page
+      size: selectedSize,
+      price: productPrice,
+    };
+
+    sessionStorage.setItem("checkoutData", JSON.stringify(finalOrderData));
+    router.push("/checkout/thank-you");
+  };
+
   return (
     <div className="min-h-screen bg-zinc-950 text-gray-300 font-sans selection:bg-sky-500/30">
-      {/* 1. HEADER + TIMER (Ajustado para Mobile Compacto) */}
       <header className="sticky top-0 z-50 bg-zinc-950 shadow-xl shadow-black/20">
         <div className="bg-[#0f172a] text-center py-1.5 border-b border-zinc-800">
           <p className="text-[10px] md:text-xs font-medium text-white flex items-center justify-center gap-2 animate-pulse">
@@ -149,8 +168,6 @@ function CheckoutContent() {
             </span>
           </p>
         </div>
-
-        {/* Container do Header: Altura reduzida no mobile (h-14) e normal no desktop (md:h-20) */}
         <div className="max-w-[1200px] mx-auto px-4 md:px-6 h-14 md:h-20 flex items-center justify-between">
           <Link
             href="/"
@@ -160,7 +177,6 @@ function CheckoutContent() {
             <span className="hidden md:inline">JEANS</span>{" "}
             <span className="text-sky-500">.</span>
           </Link>
-
           <div className="flex items-center gap-2 text-[8px] md:text-[10px] font-bold text-gray-400 opacity-80 text-right leading-tight">
             <svg
               xmlns="http://www.w3.org/2000/svg"
@@ -177,15 +193,12 @@ function CheckoutContent() {
             <div className="whitespace-nowrap">
               PAGAMENTO
               <br className="md:hidden" />
-              <span className="hidden md:inline"> </span>
-              100% SEGURO
+              <span className="hidden md:inline"> </span>100% SEGURO
             </div>
           </div>
         </div>
       </header>
 
-      {/* --- TRILHA DE PROGRESSO (Mobile) --- */}
-      {/* Ajustado paddings (py-2) para reduzir espaço */}
       <div className="md:hidden grid grid-cols-3 px-6 py-3 bg-zinc-900/50 border-b border-zinc-800 mb-2 sticky top-[85px] z-40 backdrop-blur-md">
         {[1, 2, 3].map((step) => (
           <div
@@ -207,20 +220,13 @@ function CheckoutContent() {
               {step < currentStep ? "✓" : step}
             </div>
             <span className="text-[8px] uppercase font-bold tracking-wider">
-              {step === 1
-                ? "indentificação"
-                : step === 2
-                ? "Entrega"
-                : "Pagamento"}
+              {step === 1 ? "Dados" : step === 2 ? "Entrega" : "Pagamento"}
             </span>
           </div>
         ))}
       </div>
 
-      {/* GRID PRINCIPAL */}
-      {/* Reduzido py-4 no mobile para subir o conteúdo */}
       <main className="max-w-[1200px] mx-auto px-4 py-4 md:py-8 grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-        {/* COLUNA 1: Passos 1 e 2 (Esquerda Desktop / Conteúdo Mobile) */}
         <div className="lg:col-span-4 space-y-4 order-2 lg:order-1">
           <div className={`${currentStep === 1 ? "block" : "hidden lg:block"}`}>
             <Step1_Identification
@@ -231,7 +237,6 @@ function CheckoutContent() {
               goToStep={goToStep}
             />
           </div>
-
           <div className={`${currentStep === 2 ? "block" : "hidden lg:block"}`}>
             <Step2_Delivery
               currentStep={currentStep}
@@ -244,29 +249,25 @@ function CheckoutContent() {
               clientName={customer.name}
             />
           </div>
-
-          {/* NOVO: Prova Social no Mobile (Aparece embaixo dos passos 1 e 2) */}
           <div className="md:hidden block">
             {(currentStep === 1 || currentStep === 2) && <SocialProof />}
           </div>
         </div>
 
-        {/* COLUNA 2: Passo 3 (Meio Desktop / Conteúdo Mobile) */}
         <div className="lg:col-span-4 order-3 lg:order-2">
           <div className={`${currentStep === 3 ? "block" : "hidden lg:block"}`}>
             <Step3_Payment
               currentStep={currentStep}
               paymentMethod={paymentMethod}
               setPaymentMethod={setPaymentMethod}
+              onFinish={handleFinishCheckout}
             />
-            {/* Prova Social no Passo 3 mobile */}
             <div className="md:hidden mt-4">
               <SocialProof />
             </div>
           </div>
         </div>
 
-        {/* COLUNA 3: Resumo (Direita Desktop / Topo Mobile) */}
         <div className="lg:col-span-4 order-1 lg:order-3">
           <OrderSummary
             shippingMethod={shippingMethod}
@@ -274,14 +275,12 @@ function CheckoutContent() {
             selectedSize={selectedSize}
             productPrice={productPrice}
           />
-          {/* Prova Social Desktop (Abaixo do Resumo) */}
           <div className="hidden md:block mt-6">
             <SocialProof />
           </div>
         </div>
       </main>
 
-      {/* FOOTER */}
       <footer className="py-8 md:py-10 border-t border-zinc-900 text-center bg-zinc-950 mt-auto">
         <div className="max-w-4xl mx-auto px-6">
           <p className="text-[10px] text-zinc-600 font-bold uppercase tracking-widest mb-4">
